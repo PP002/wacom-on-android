@@ -56,10 +56,10 @@
 - pip install pyusb
 
 # 3. Clone & run
-- git clone https://github.com/noxbitx/wacom-on-android
+- git clone https://github.com/PP002/wacom-on-android
 - cd wacom-on-android/src
-- tsu
-- python wacom_driver.py
+- su
+- /data/data/com.termux/files/usr/bin/python wacom_driver.py
 - Press Ctrl+C to stop.
 
 ## Configuration
