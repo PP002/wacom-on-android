@@ -128,8 +128,8 @@ class WacomDriver:
         return self.endpoint is not None
 
     def run(self):
-        print("\n=== 驅動運行中 (高靈敏度壓感模式) ===")
-        print("請在 SketchBook 中測試，按 Ctrl+C 結束\n")
+        print("\n===Driver running===")
+        print("Please test in SketchBook or ebookcc.com/create, then press Ctrl+C to finish.\n")
 
         try:
             while True:
@@ -178,7 +178,7 @@ class WacomDriver:
                     continue
                     
         except KeyboardInterrupt:
-            print("\n正在安全退出驅動程式...")
+            print("\nSafely exiting the driver...")
         finally:
             self.uinput.close()
 
