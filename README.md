@@ -51,15 +51,18 @@ Open Termux and run:
 ```bash
 pkg update && pkg install python libusb git clang make
 pip install pyusb
+```
+
 ### 2. Clone the Repository
 ```bash
 git clone [https://github.com/PP002/wacom-on-android.git](https://github.com/PP002/wacom-on-android.git)
 cd wacom-on-android/src
+```
 ### 3. Run the Driver
 Grant root privileges and launch the driver script:
-
 ```bash
 su -c "python wacom_driver.py"
+```
 (Press Ctrl+C to exit safely at any time.)
 
 ### 4.Automation (One-Click Shortcut)
@@ -71,12 +74,13 @@ cat << 'EOF' > run.sh
 cd "$(dirname "$0")"
 su -c "/data/data/com.termux/files/usr/bin/python wacom_driver.py"
 EOF
-
 chmod +x run.sh
+```
 Now you can launch your drawing pad instantly with:
 
 ```bash
 ./run.sh
+```
 ## Configuration
 You can tweak screen resolution, raw hardware boundaries, or pressure curves directly inside wacom_driver.py:
 
