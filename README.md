@@ -59,7 +59,7 @@ cd wacom-on-android/src
 Grant root privileges and launch the driver script:
 
 Bash
-su -c "python wacom_driver_v1.4.0.py"
+su -c "python wacom_driver.py"
 (Press Ctrl+C to exit safely at any time.)
 
 Automation (One-Click Shortcut)
@@ -69,7 +69,7 @@ Bash
 cat << 'EOF' > run.sh
 #!/data/data/com.termux/files/usr/bin/bash
 cd "$(dirname "$0")"
-su -c "/data/data/com.termux/files/usr/bin/python wacom_driver_v1.4.0.py"
+su -c "/data/data/com.termux/files/usr/bin/python wacom_driver.py"
 EOF
 
 chmod +x run.sh
@@ -78,7 +78,7 @@ Now you can launch your drawing pad instantly with:
 Bash
 ./run.sh
 Configuration
-You can tweak screen resolution, raw hardware boundaries, or pressure curves directly inside wacom_driver_v1.4.0.py:
+You can tweak screen resolution, raw hardware boundaries, or pressure curves directly inside wacom_driver.py:
 
 Python
 SCREEN_WIDTH = 1080
