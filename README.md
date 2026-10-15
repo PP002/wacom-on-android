@@ -51,21 +51,21 @@ Open Termux and run:
 ```bash
 pkg update && pkg install python libusb git clang make
 pip install pyusb
-2. Clone the Repository
-Bash
+### 2. Clone the Repository
+```bash
 git clone [https://github.com/PP002/wacom-on-android.git](https://github.com/PP002/wacom-on-android.git)
 cd wacom-on-android/src
-3. Run the Driver
+### 3. Run the Driver
 Grant root privileges and launch the driver script:
 
-Bash
+```bash
 su -c "python wacom_driver.py"
 (Press Ctrl+C to exit safely at any time.)
 
-Automation (One-Click Shortcut)
+### 4.Automation (One-Click Shortcut)
 To avoid typing long commands every time you plug in the tablet, create a quick launcher script (run.sh):
 
-Bash
+```bash
 cat << 'EOF' > run.sh
 #!/data/data/com.termux/files/usr/bin/bash
 cd "$(dirname "$0")"
@@ -75,9 +75,9 @@ EOF
 chmod +x run.sh
 Now you can launch your drawing pad instantly with:
 
-Bash
+```bash
 ./run.sh
-Configuration
+## Configuration
 You can tweak screen resolution, raw hardware boundaries, or pressure curves directly inside wacom_driver.py:
 
 Python
@@ -86,7 +86,7 @@ SCREEN_HEIGHT = 2340
 
 TABLET_RAW_MAX_X = 15200
 TABLET_RAW_MAX_Y = 9500
-Troubleshooting
+## Troubleshooting
 NoBackendError: Ensure libusb is installed via Termux (pkg install libusb) and the backend path in the script points correctly to /data/data/com.termux/files/usr/lib/libusb-1.0.so.
 
 Errno 19 No such device: Ensure interface 0 is successfully claimed before reading endpoints.
@@ -102,5 +102,5 @@ Wacom HID Protocol Reference
 
 "Why let old hardware gather dust when you can turn your phone into a portable graphics tablet for free?"
 
-License
+## License
 GPL v3 License
