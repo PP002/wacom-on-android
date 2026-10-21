@@ -97,9 +97,13 @@ class WacomDriver:
         self.endpoint = None
 
     def connect(self):
-        backend = usb.backend.libusb1.get_backend(find_library=lambda x: '/data/data/com.termux/files/usr/lib/libusb-1.0.so')
+        libusb_path = '/data/data/com.termux/files/usr/lib/libusb-1.0.so'
+        backend = usb.backend.libusb1.get_backend(find_library=lambda x: libusb_path)
+        print(f"Looking for Wacom tablet {hex(WACOM_VENDOR_ID)}:{hex(WACOM_PRODUCT_ID)}...")
         self.device = usb.core.find(idVendor=WACOM_VENDOR_ID, idProduct=WACOM_PRODUCT_ID, backend=backend)
-        if not self.device: return False
+        if not self.device: 
+            print("❌ Wacom device not found!")
+            return False
         
         if self.device.is_kernel_driver_active(0):
             try: self.device.detach_kernel_driver(0)
@@ -111,6 +115,12 @@ class WacomDriver:
             pass
 
         try:
+            usb.util.claim_interface(self.device, 0)
+            print("✓ USB interface 0 claimed successfully")
+        except Exception as e:
+            print(f"⚠ Claim interface warning: {e}")
+
+        try:
             init_data = [0x02, 0x02, 0x02] + [0x00] * 5
             self.device.ctrl_transfer(
                 bmRequestType=0x21, 
@@ -118,23 +128,24 @@ class WacomDriver:
                 wValue=0x0302, 
                 wIndex=0x00, 
                 data_or_wLength=init_data, 
-                timeout=1000
+                timeout=600000
             )
+            print("✓ Hardware initialized: Report ID 0x02 absolute mode unlocked")
         except Exception as e:
-            pass
+            print(f"⚠ Control transfer warning: {e}")
 
         cfg = self.device.get_active_configuration()
         self.endpoint = usb.util.find_descriptor(cfg[(0,0)], custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN)
         return self.endpoint is not None
 
     def run(self):
-        print("\n===Driver running===")
+        print("\n=== Driver Running (Rotation, Scaling & Pressure Curve) ===")
         print("Please test in SketchBook or ebookcc.com/create, then press Ctrl+C to finish.\n")
 
         try:
             while True:
                 try:
-                    data = self.endpoint.read(64, timeout=100)
+                    data = self.endpoint.read(64, timeout=600000)
                 except usb.core.USBTimeoutError:
                     continue
 
@@ -180,6 +191,10 @@ class WacomDriver:
         except KeyboardInterrupt:
             print("\nSafely exiting the driver...")
         finally:
+            try:
+                usb.util.release_interface(self.device, 0)
+            except:
+                pass
             self.uinput.close()
 
 if __name__ == '__main__':
