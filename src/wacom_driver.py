@@ -105,20 +105,18 @@ class WacomDriver:
             print("❌ Wacom device not found!")
             return False
         
-        if self.device.is_kernel_driver_active(0):
-            try: self.device.detach_kernel_driver(0)
-            except: pass
+        # Only separate the core driver, do not manually claim the interface to avoid conflicts.
+        try:
+            if self.device.is_kernel_driver_active(0):
+                self.device.detach_kernel_driver(0)
+                print("✓ Successfully detached kernel driver from interface 0")
+        except Exception as e:
+            print(f"⚠ Detach kernel driver note: {e}")
             
         try: 
             self.device.set_configuration()
         except: 
             pass
-
-        try:
-            usb.util.claim_interface(self.device, 0)
-            print("✓ USB interface 0 claimed successfully")
-        except Exception as e:
-            print(f"⚠ Claim interface warning: {e}")
 
         try:
             init_data = [0x02, 0x02, 0x02] + [0x00] * 5
@@ -132,7 +130,7 @@ class WacomDriver:
             )
             print("✓ Hardware initialized: Report ID 0x02 absolute mode unlocked")
         except Exception as e:
-            print(f"⚠ Control transfer warning: {e}")
+            print(f"⚠ Control transfer note: {e}")
 
         cfg = self.device.get_active_configuration()
         self.endpoint = usb.util.find_descriptor(cfg[(0,0)], custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN)
@@ -192,10 +190,9 @@ class WacomDriver:
             print("\nSafely exiting the driver...")
         finally:
             try:
-                usb.util.release_interface(self.device, 0)
+                self.uinput.close()
             except:
                 pass
-            self.uinput.close()
 
 if __name__ == '__main__':
     d = WacomDriver()
