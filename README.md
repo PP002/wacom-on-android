@@ -66,12 +66,12 @@ su -c "/data/data/com.termux/files/usr/bin/python wacom_driver.py"
 (Press Ctrl+C to exit safely at any time.)
 
 ### 4.Automation (One-Click Shortcut)
-To avoid typing long commands every time you plug in the tablet, create a quick launcher script (run.sh):
+To avoid typing long commands every time you plug in the tablet, create a quick launcher script on home(run.sh):
 
 ```bash
 cat << 'EOF' > run.sh
 #!/data/data/com.termux/files/usr/bin/bash
-cd "$(dirname "$0")"
+cd ~/wacom-on-android/src
 su -c "/data/data/com.termux/files/usr/bin/python wacom_driver.py"
 EOF
 chmod +x run.sh
