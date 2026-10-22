@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/python
-import usb.core, usb.util, usb.backend.libusb1, struct, os, sys, time, ctypes, fcntl
+import os, sys, time, ctypes, fcntl, glob, struct
 
 UINPUT_PATH = '/dev/uinput'
 UI_SET_EVBIT = 0x40045564
@@ -18,8 +18,13 @@ ABS_Y = 0x01
 ABS_PRESSURE = 0x18
 BTN_TOUCH = 0x14a
 BTN_TOOL_PEN = 0x140
+BTN_STYLUS = 0x14b
+BTN_STYLUS2 = 0x14c
 SYN_REPORT = 0
 ABS_CNT = 0x40
+
+KEY_ENTER = 0x1c
+KEY_E = 0x12
 
 class uinput_user_dev(ctypes.Structure):
     _fields_ = [
@@ -57,6 +62,10 @@ class UInputDevice:
         fcntl.ioctl(self.fd, UI_SET_EVBIT, EV_ABS)
         fcntl.ioctl(self.fd, UI_SET_KEYBIT, BTN_TOUCH)
         fcntl.ioctl(self.fd, UI_SET_KEYBIT, BTN_TOOL_PEN)
+        fcntl.ioctl(self.fd, UI_SET_KEYBIT, BTN_STYLUS)
+        fcntl.ioctl(self.fd, UI_SET_KEYBIT, BTN_STYLUS2)
+        fcntl.ioctl(self.fd, UI_SET_KEYBIT, KEY_ENTER)
+        fcntl.ioctl(self.fd, UI_SET_KEYBIT, KEY_E)
         fcntl.ioctl(self.fd, UI_SET_ABSBIT, ABS_X)
         fcntl.ioctl(self.fd, UI_SET_ABSBIT, ABS_Y)
         fcntl.ioctl(self.fd, UI_SET_ABSBIT, ABS_PRESSURE)
@@ -93,73 +102,134 @@ class UInputDevice:
 class WacomDriver:
     def __init__(self):
         self.uinput = UInputDevice()
-        self.device = None
-        self.endpoint = None
+        self.libusb = None
+        self.dev_handle = None
+        self.button1_pressed = False
+        self.button2_pressed = False
 
     def connect(self):
         libusb_path = '/data/data/com.termux/files/usr/lib/libusb-1.0.so'
-        backend = usb.backend.libusb1.get_backend(find_library=lambda x: libusb_path)
-        print(f"Looking for Wacom tablet {hex(WACOM_VENDOR_ID)}:{hex(WACOM_PRODUCT_ID)}...")
-        self.device = usb.core.find(idVendor=WACOM_VENDOR_ID, idProduct=WACOM_PRODUCT_ID, backend=backend)
-        if not self.device: 
-            print("❌ Wacom device not found!")
-            return False
         
-        # Only separate the core driver, do not manually claim the interface to avoid conflicts.
         try:
-            if self.device.is_kernel_driver_active(0):
-                self.device.detach_kernel_driver(0)
-                print("✓ Successfully detached kernel driver from interface 0")
+            for dev_dir in glob.glob('/sys/bus/usb/devices/*'):
+                try:
+                    vid_path = os.path.join(dev_dir, 'idVendor')
+                    pid_path = os.path.join(dev_dir, 'idProduct')
+                    if os.path.exists(vid_path) and os.path.exists(pid_path):
+                        with open(vid_path, 'r') as f:
+                            vid = f.read().strip()
+                        with open(pid_path, 'r') as f:
+                            pid = f.read().strip()
+                        if int(vid, 16) == WACOM_VENDOR_ID and int(pid, 16) == WACOM_PRODUCT_ID:
+                            base_dev = os.path.basename(dev_dir)
+                            for intf_dir in glob.glob(os.path.join(dev_dir, f'{base_dev}:*')):
+                                driver_link = os.path.join(intf_dir, 'driver')
+                                if os.path.exists(driver_link):
+                                    driver_name = os.path.basename(os.readlink(driver_link))
+                                    if driver_name == 'usbhid':
+                                        intf_name = os.path.basename(intf_dir)
+                                        unbind_path = f'/sys/bus/usb/drivers/usbhid/unbind'
+                                        if os.path.exists(unbind_path):
+                                            with open(unbind_path, 'w') as u:
+                                                u.write(intf_name)
+                                            print(f"✓ Unbound {intf_name} from usbhid via sysfs")
+                except Exception:
+                    continue
         except Exception as e:
-            print(f"⚠ Detach kernel driver note: {e}")
-            
-        try: 
-            self.device.set_configuration()
-        except: 
-            pass
+            print(f"⚠ Sysfs unbind note: {e}")
 
         try:
-            init_data = [0x02, 0x02, 0x02] + [0x00] * 5
-            self.device.ctrl_transfer(
-                bmRequestType=0x21, 
-                bRequest=0x09, 
-                wValue=0x0302, 
-                wIndex=0x00, 
-                data_or_wLength=init_data, 
-                timeout=600000
+            self.libusb = ctypes.CDLL(libusb_path)
+        except Exception as e:
+            print(f"❌ Failed to load libusb: {e}")
+            return False
+
+        self.libusb.libusb_init.argtypes = [ctypes.c_void_p]
+        self.libusb.libusb_init.restype = ctypes.c_int
+        
+        self.libusb.libusb_open_device_with_vid_pid.argtypes = [ctypes.c_void_p, ctypes.c_uint16, ctypes.c_uint16]
+        self.libusb.libusb_open_device_with_vid_pid.restype = ctypes.c_void_p
+
+        self.libusb.libusb_detach_kernel_driver.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.libusb.libusb_detach_kernel_driver.restype = ctypes.c_int
+
+        self.libusb.libusb_claim_interface.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self.libusb.libusb_claim_interface.restype = ctypes.c_int
+
+        self.libusb.libusb_control_transfer.argtypes = [ctypes.c_void_p, ctypes.c_uint8, ctypes.c_uint8, ctypes.c_uint16, ctypes.c_uint16, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_uint16, ctypes.c_uint32]
+        self.libusb.libusb_control_transfer.restype = ctypes.c_int
+
+        self.libusb.libusb_interrupt_transfer.argtypes = [ctypes.c_void_p, ctypes.c_ubyte, ctypes.POINTER(ctypes.c_ubyte), ctypes.c_int, ctypes.POINTER(ctypes.c_int), ctypes.c_uint32]
+        self.libusb.libusb_interrupt_transfer.restype = ctypes.c_int
+
+        self.libusb.libusb_init(None)
+
+        print(f"Looking for Wacom tablet {hex(WACOM_VENDOR_ID)}:{hex(WACOM_PRODUCT_ID)}...")
+        self.dev_handle = self.libusb.libusb_open_device_with_vid_pid(None, WACOM_VENDOR_ID, WACOM_PRODUCT_ID)
+        if not self.dev_handle:
+            print("❌ Wacom device not found!")
+            return False
+
+        try:
+            self.libusb.libusb_detach_kernel_driver(self.dev_handle, 0)
+        except Exception:
+            pass
+
+        ret = self.libusb.libusb_claim_interface(self.dev_handle, 0)
+        if ret < 0:
+            print(f"⚠ Claim interface warning code: {ret}")
+        else:
+            print("✓ USB interface 0 claimed successfully via libusb")
+
+        try:
+            init_data = (ctypes.c_ubyte * 8)(0x02, 0x02, 0x02, 0, 0, 0, 0, 0)
+            self.libusb.libusb_control_transfer(
+                self.dev_handle, 
+                0x21, 0x09, 0x0302, 0x00, 
+                init_data, 8, 1000
             )
             print("✓ Hardware initialized: Report ID 0x02 absolute mode unlocked")
         except Exception as e:
             print(f"⚠ Control transfer note: {e}")
 
-        cfg = self.device.get_active_configuration()
-        self.endpoint = usb.util.find_descriptor(cfg[(0,0)], custom_match=lambda e: usb.util.endpoint_direction(e.bEndpointAddress) == usb.util.ENDPOINT_IN)
-        return self.endpoint is not None
+        return True
+
+    def send_key(self, key):
+        self.uinput.send_event(EV_KEY, key, 1)
+        self.uinput.sync()
+        time.sleep(0.01)
+        self.uinput.send_event(EV_KEY, key, 0)
+        self.uinput.sync()
 
     def run(self):
-        print("\n=== Driver Running (Rotation, Scaling & Pressure Curve) ===")
-        print("Please test in SketchBook or ebookcc.com/create, then press Ctrl+C to finish.\n")
+        print("\n=== Driver Running (Buttons: Lower=Enter, Upper=E) ===")
+        print("Please test in ebookcc.com/create or SketchBook, then press Ctrl+C to finish.\n")
+
+        buf = (ctypes.c_ubyte * 64)()
+        actual_length = ctypes.c_int(0)
 
         try:
             while True:
-                try:
-                    data = self.endpoint.read(64, timeout=600000)
-                except usb.core.USBTimeoutError:
+                ret = self.libusb.libusb_interrupt_transfer(
+                    self.dev_handle, 0x81, buf, 64, ctypes.byref(actual_length), 600000
+                )
+                
+                if ret < 0 or actual_length.value < 4:
                     continue
 
-                if len(data) < 4:
-                    continue
-
+                data = bytes(buf[:actual_length.value])
                 report_id = data[0]
                 
                 if report_id == 0x02 and len(data) >= 8:
                     status = data[1]
                     in_range = bool(status & 0x20 or status & 0x80 or status & 0x01)
                     tip_switch = bool(status & 0x01)
+                    button1 = bool(status & 0x02)
+                    button2 = bool(status & 0x04)
                     
-                    raw_x = struct.unpack('<H', bytes(data[2:4]))[0]
-                    raw_y = struct.unpack('<H', bytes(data[4:6]))[0]
-                    raw_pressure = struct.unpack('<H', bytes(data[6:8]))[0]
+                    raw_x = struct.unpack('<H', data[2:4])[0]
+                    raw_y = struct.unpack('<H', data[4:6])[0]
+                    raw_pressure = struct.unpack('<H', data[6:8])[0]
                     
                     if raw_pressure > 0:
                         normalized = raw_pressure / 1023.0
@@ -175,11 +245,21 @@ class WacomDriver:
                     screen_x = max(0, min(SCREEN_WIDTH, screen_x))
                     screen_y = max(0, min(SCREEN_HEIGHT, screen_y))
                     
+                    if button1 and not self.button1_pressed:
+                        self.send_key(KEY_ENTER)
+                    if button2 and not self.button2_pressed:
+                        self.send_key(KEY_E)
+                        
+                    self.button1_pressed = button1
+                    self.button2_pressed = button2
+                    
                     self.uinput.send_event(EV_KEY, BTN_TOOL_PEN, 1 if in_range else 0)
                     if in_range:
                         self.uinput.send_event(EV_ABS, ABS_X, screen_x)
                         self.uinput.send_event(EV_ABS, ABS_Y, screen_y)
                         self.uinput.send_event(EV_KEY, BTN_TOUCH, 1 if tip_switch else 0)
+                        self.uinput.send_event(EV_KEY, BTN_STYLUS, 1 if button1 else 0)
+                        self.uinput.send_event(EV_KEY, BTN_STYLUS2, 1 if button2 else 0)
                         self.uinput.send_event(EV_ABS, ABS_PRESSURE, pressure)
                     self.uinput.sync()
                     
@@ -189,10 +269,13 @@ class WacomDriver:
         except KeyboardInterrupt:
             print("\nSafely exiting the driver...")
         finally:
-            try:
-                self.uinput.close()
-            except:
-                pass
+            if self.dev_handle and self.libusb:
+                try:
+                    self.libusb.libusb_release_interface(self.dev_handle, 0)
+                    self.libusb.libusb_close(self.dev_handle)
+                except:
+                    pass
+            self.uinput.close()
 
 if __name__ == '__main__':
     d = WacomDriver()
